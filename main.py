@@ -6,17 +6,24 @@ from PIL import ImageFont
 import numpy as np
 
 # Configurações
-FONT_PATH = "C:/Windows/Fonts/LCALLIG.TTF"  # Caminho da fonte Arial
+CRACHA_PATH = "./Media/cracha.png" 
+CRACHA_STAFF_PATH = "./Media/cracha_staff.png"
+FONT_PATH = "./Fonts/roca-one-regular.ttf"  # Caminho da fonte Arial
 FONT_SIZE_NAME = 105  
 FONT_SIZE_OTHER = 50 
-SPREADSHEET = "nomes.csv"  # Planilha com os nomes
+SPREADSHEET = "./Media/nomes.csv"  # Planilha com os nomes
+NUMERO_GRUPOS_JOVENS_LESS_30 = 5
+IDADE_ADULTO = 100
+CORES_GRUPOS = ['Laranja', 'Verde', 'Azul', 'Roxo', 'Rosa']
+
+NOMES_DIMINUIR = ['Nome']
 
 def generate_badge(name, output_path, staff, numero_grupo):
 
-    if staff == True:
-        img = Image.open("cracha_staff.png")
+    if staff == 'Sim':
+        img = Image.open(CRACHA_STAFF_PATH)
     else:
-        img = Image.open("cracha.png")
+        img = Image.open(CRACHA_PATH)
 
     draw = ImageDraw.Draw(img)
     
@@ -29,6 +36,10 @@ def generate_badge(name, output_path, staff, numero_grupo):
 
     # Remover espaço no final do nome, se houver
     name = name.rstrip()
+
+    if name in NOMES_DIMINUIR:
+        font_name = ImageFont.truetype(FONT_PATH, FONT_SIZE_NAME - 10)
+
     name_parts = name.split(" ")
     if len(name_parts) > 1:
         name2use = "{} {}".format(name_parts[0], name_parts[-1])
@@ -41,7 +52,7 @@ def generate_badge(name, output_path, staff, numero_grupo):
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
     text_x = (img_width / 2) - (text_width / 2)  # Centralizar
-    text_y = img_height - text_height - int(img_height * 0.11)  # Ajuste vertical
+    text_y = img_height - text_height - int(img_height * 0.13)  # Ajuste vertical
 
     # Adicionar nome ao crachá
     draw.text((text_x, text_y), name2use, font=font_name, fill="black")
@@ -49,24 +60,24 @@ def generate_badge(name, output_path, staff, numero_grupo):
 
     if not np.isnan(numero_grupo):
         # Adicionar texto "Grupo: X: " no canto inferior esquerdo
-        camp_text = "Grupo: {}".format(int(numero_grupo))
+        camp_text = "Grupo: {}".format(CORES_GRUPOS[int(numero_grupo)-1])
         camp_bbox = draw.textbbox((0, 0), camp_text, font=font_other)
         text_width = camp_bbox[2] - camp_bbox[0]
         text_height = camp_bbox[3] - camp_bbox[1]
-        camp_x = int(img_width * 0.95) - text_width  # Margem direita
+        camp_x = int(img_width * 0.88) - text_width  # Margem direita
         camp_y = img_height - text_height - int(img_height * 0.05)  # Ajuste vertical
 
         draw.text((camp_x, camp_y), camp_text, font=font_other, fill="black")
 
     # Adicionar texto "Acampamento: " no canto inferior esquerdo
-    camp_text = "Acampamento: "
-    camp_bbox = draw.textbbox((0, 0), camp_text, font=font_other)
-    text_width = camp_bbox[2] - camp_bbox[0]
-    text_height = camp_bbox[3] - camp_bbox[1]
-    camp_x = int(img_width * 0.04)  # Margem esquerda
-    camp_y = img_height - text_height - int(img_height * 0.05)  # Ajuste vertical
+    # camp_text = "Acampamento: "
+    # camp_bbox = draw.textbbox((0, 0), camp_text, font=font_other)
+    # text_width = camp_bbox[2] - camp_bbox[0]
+    # text_height = camp_bbox[3] - camp_bbox[1]
+    # camp_x = int(img_width * 0.04)  # Margem esquerda
+    # camp_y = img_height - text_height - int(img_height * 0.09)  # Ajuste vertical
 
-    draw.text((camp_x, camp_y), camp_text, font=font_other, fill="black")
+    # draw.text((camp_x, camp_y), camp_text, font=font_other, fill="black")
     
     # Salvar imagem
     img.save(output_path)
@@ -76,17 +87,25 @@ def create_pdf(df):
     ################################################################
     df = df[~df["Participante"].isna()].reset_index(drop=True)
 
-    # Filtrar apenas os participantes que estão em grupo
-    df_grupo = df[df["Grupo"] == True].reset_index(drop=True)
+    # Filtrar apenas os participantes que nao sao Staff
+    df_grupo = df[df["Staff"] == "Não"].reset_index(drop=True)
+
+    df_grupo = df_grupo[df_grupo["Idade"] <= IDADE_ADULTO]
 
     # Embaralhar os índices dos participantes
     shuffled_indices = np.random.permutation(df_grupo.index)
 
     # Dividir os participantes em seis grupos de forma aleatória
-    df_grupo["Grupo_Numero"] = (shuffled_indices % 6) + 1
+    df_grupo["Grupo_Numero"] = (shuffled_indices % NUMERO_GRUPOS_JOVENS_LESS_30) + 1
 
     # Atualizar o dataframe original com os números dos grupos
     df = df.merge(df_grupo[["Participante", "Grupo_Numero"]], on="Participante", how="left")
+
+    # Nao staff, maiores de 30 vao para grupo 5
+    df.loc[(df["Idade"] > IDADE_ADULTO) & (df["Staff"] == "Não"), "Grupo_Numero"] = NUMERO_GRUPOS_JOVENS_LESS_30 + 1
+
+    # df.to_csv('groups_out.csv', index=False)
+
     ################################################################
 
     names = df["Participante"].astype(str).tolist()
@@ -97,8 +116,8 @@ def create_pdf(df):
     
     for idx in range(len(names)):
 
-        if idx < len(names) - 1:
-            continue
+        # if idx < len(names) - 1:
+        #     continue
 
         name = names[idx]
         staff = staffs[idx]
@@ -115,7 +134,7 @@ def create_pdf(df):
             if idx == len(names) - 1:
                 # Adicionar crachás em branco para completar a página
                 while len(crachas_por_pagina) < 4:
-                    output_img_path = "cracha.png"
+                    output_img_path = CRACHA_PATH
                     crachas_por_pagina.append(output_img_path)
 
             """Cria um PDF com quatro crachás por página."""
